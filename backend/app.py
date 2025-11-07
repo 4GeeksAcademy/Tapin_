@@ -27,6 +27,17 @@ except Exception:
 default_db = 'sqlite:///' + os.path.join(base_dir, 'data.db')
 app.config['SQLALCHEMY_DATABASE_URI'] = os.environ.get('SQLALCHEMY_DATABASE_URI', default_db)
 app.config['SQLALCHEMY_TRACK_MODIFICATIONS'] = False
+# Supabase connection pooling configuration for transaction mode (port 6543)
+app.config['SQLALCHEMY_ENGINE_OPTIONS'] = {
+    'pool_pre_ping': True,  # Verify connections before using
+    'pool_recycle': 300,    # Recycle connections every 5 minutes
+    'pool_size': 5,         # Base connection pool size
+    'max_overflow': 10,     # Allow up to 15 total connections
+    'connect_args': {
+        'connect_timeout': 10,
+        'options': '-c statement_timeout=30000'  # 30 second query timeout
+    }
+}
 # Secret key used for serializer tokens and other Flask features
 app.config['SECRET_KEY'] = os.environ.get('SECRET_KEY', 'dev-secret-key')
 app.config['JWT_SECRET_KEY'] = os.environ.get('JWT_SECRET_KEY', app.config['SECRET_KEY'])
@@ -183,7 +194,26 @@ def index():
 
 @app.route('/api/health', methods=['GET'])
 def api_health():
-    return jsonify({"status": "ok"}), 200
+    """Enhanced health check including database connectivity."""
+    health_status = {"status": "ok", "components": {}}
+
+    # Check database connection
+    try:
+        db.session.execute(db.text('SELECT 1'))
+        health_status["components"]["database"] = {
+            "status": "connected",
+            "uri_prefix": app.config['SQLALCHEMY_DATABASE_URI'][:20] + "...",
+            "pool_size": db.engine.pool.size() if hasattr(db.engine.pool, 'size') else 'N/A'
+        }
+    except Exception as e:
+        health_status["status"] = "degraded"
+        health_status["components"]["database"] = {
+            "status": "error",
+            "error": str(e)
+        }
+        return jsonify(health_status), 503
+
+    return jsonify(health_status), 200
 
 
 @app.route('/api/items', methods=['GET'])
