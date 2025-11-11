@@ -11,31 +11,51 @@ L.Icon.Default.mergeOptions({
   shadowUrl: 'https://cdnjs.cloudflare.com/ajax/libs/leaflet/1.7.1/images/marker-shadow.png',
 });
 
-export default function MapView({ listings, onListingClick }) {
+export default function MapView({ listings, onListingClick, userLocation }) {
   const mapRef = useRef();
 
-  // Filter listings that have coordinates
+  // Use user's selected location or default to Houston/Dallas area
+  const LOCAL_CITY_CENTER = userLocation?.coords || [29.7604, -95.3698]; // Houston, TX (default)
+  const MAX_DISTANCE_KM = 50; // Only show listings within 50km of city center
+
+  // Helper function to calculate distance between two coordinates (Haversine formula)
+  const getDistanceKm = (lat1, lon1, lat2, lon2) => {
+    const R = 6371; // Earth's radius in km
+    const dLat = (lat2 - lat1) * Math.PI / 180;
+    const dLon = (lon2 - lon1) * Math.PI / 180;
+    const a =
+      Math.sin(dLat/2) * Math.sin(dLat/2) +
+      Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) *
+      Math.sin(dLon/2) * Math.sin(dLon/2);
+    const c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a));
+    return R * c;
+  };
+
+  // Filter listings that have coordinates AND are within local area
   const mappableListings = listings.filter(
-    (listing) => listing.latitude != null && listing.longitude != null,
+    (listing) => {
+      if (listing.latitude == null || listing.longitude == null) return false;
+      const distance = getDistanceKm(
+        LOCAL_CITY_CENTER[0],
+        LOCAL_CITY_CENTER[1],
+        listing.latitude,
+        listing.longitude
+      );
+      return distance <= MAX_DISTANCE_KM;
+    }
   );
 
-  // Calculate center: average of all listing coordinates or default
-  const center =
-    mappableListings.length > 0
-      ? [
-          mappableListings.reduce((sum, l) => sum + l.latitude, 0) / mappableListings.length,
-          mappableListings.reduce((sum, l) => sum + l.longitude, 0) / mappableListings.length,
-        ]
-      : [37.7749, -122.4194]; // Default to San Francisco
+  // Fixed center on local city
+  const center = LOCAL_CITY_CENTER;
 
-  // Adjust zoom level based on number of listings
-  const zoom = mappableListings.length === 1 ? 13 : 10;
+  // Fixed zoom level for city view (prevent zooming out to see entire country)
+  const zoom = 11;
 
   useEffect(() => {
-    // Fit bounds to show all markers when listings change
-    if (mapRef.current && mappableListings.length > 1) {
-      const bounds = L.latLngBounds(mappableListings.map((l) => [l.latitude, l.longitude]));
-      mapRef.current.fitBounds(bounds, { padding: [50, 50] });
+    // Keep map centered on local city, don't auto-fit to all markers
+    // This ensures the map stays focused on your local area
+    if (mapRef.current) {
+      mapRef.current.setView(LOCAL_CITY_CENTER, zoom);
     }
   }, [mappableListings]);
 
@@ -53,9 +73,9 @@ export default function MapView({ listings, onListingClick }) {
         }}
       >
         <div style={{ textAlign: 'center' }}>
-          <p style={{ fontSize: '18px', marginBottom: '8px' }}>📍 No listings with locations yet</p>
+          <p style={{ fontSize: '18px', marginBottom: '8px' }}>📍 No local listings found</p>
           <p style={{ fontSize: '14px' }}>
-            Listings need latitude and longitude coordinates to appear on the map.
+            No listings within {MAX_DISTANCE_KM}km of your area have location data.
           </p>
         </div>
       </div>
@@ -69,6 +89,12 @@ export default function MapView({ listings, onListingClick }) {
       ref={mapRef}
       style={{ height: '600px', width: '100%', borderRadius: '8px' }}
       scrollWheelZoom={true}
+      minZoom={10}
+      maxZoom={15}
+      maxBounds={[
+        [LOCAL_CITY_CENTER[0] - 0.5, LOCAL_CITY_CENTER[1] - 0.5],
+        [LOCAL_CITY_CENTER[0] + 0.5, LOCAL_CITY_CENTER[1] + 0.5]
+      ]}
     >
       <TileLayer
         attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors'

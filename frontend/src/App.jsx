@@ -8,6 +8,7 @@ import AuthForm from './components/AuthForm';
 import CreateListingForm from './components/CreateListingForm';
 import DashboardLanding from './pages/DashboardLanding';
 import MapView from './components/MapView';
+import LocationSelector from './components/LocationSelector';
 
 export default function App() {
   const [listings, setListings] = useState([]);
@@ -20,6 +21,7 @@ export default function App() {
   const [showLanding, setShowLanding] = useState(!token);
   const [user, setUser] = useState(null);
   const [viewMode, setViewMode] = useState('list'); // 'list' or 'map'
+  const [userLocation, setUserLocation] = useState(null); // Store user's selected location
 
   // Helper: fetch listings optionally filtered by q
   async function fetchListings(filter) {
@@ -191,8 +193,10 @@ export default function App() {
                   </li>
                 ))}
               </ul>
+            ) : userLocation ? (
+              <MapView listings={listings} onListingClick={handleSelect} userLocation={userLocation} />
             ) : (
-              <MapView listings={listings} onListingClick={handleSelect} />
+              <LocationSelector onLocationSelected={setUserLocation} />
             )}
           </section>
         )}
